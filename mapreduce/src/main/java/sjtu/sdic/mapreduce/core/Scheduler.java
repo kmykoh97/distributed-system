@@ -6,10 +6,9 @@ import sjtu.sdic.mapreduce.common.JobPhase;
 import sjtu.sdic.mapreduce.common.Utils;
 import sjtu.sdic.mapreduce.rpc.Call;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created by Cachhe on 2019/4/22.
@@ -54,6 +53,48 @@ public class Scheduler {
         // Your code here (Part III, Part IV).
         //
         */
+        // we should initiate an array to keep track of task completion for fault tolerant
+        Boolean[] task_completion = new Boolean[nTasks]; // boolean default to false, but Boolean default to null
+        CountDownLatch countDownLatch = new CountDownLatch(nTasks);
+
+        for (int i = 0; i < nTasks; i++) {
+            task_completion[i] = false;
+        }
+
+        while (true) {
+            // we should break if all task done
+            if (!Arrays.asList(task_completion).contains(false)) break; // boolean type cannot work with this method. Need Boolean class
+
+            for (int i = 0; i < nTasks; i++) {
+                if (task_completion[i] == true) continue;
+
+                try {
+                    String worker = registerChan.read();
+                    DoTaskArgs doTaskArgs = new DoTaskArgs(jobName, mapFiles[i], phase, i, nOther);
+
+                    // new thread
+                    new Thread() {
+                        public void run() {
+                            Call.getWorkerRpcService(worker).doTask(doTaskArgs);
+                            task_completion[doTaskArgs.taskNum] = true;
+                            try {
+                                registerChan.write(worker);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                            countDownLatch.countDown();
+                        }
+                    }.start();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
         System.out.println(String.format("Schedule: %s done", phase));
     }

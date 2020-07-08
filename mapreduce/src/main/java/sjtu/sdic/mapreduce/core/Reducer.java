@@ -2,17 +2,17 @@ package sjtu.sdic.mapreduce.core;
 
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import io.netty.handler.codec.json.JsonObjectDecoder;
 import sjtu.sdic.mapreduce.common.KeyValue;
 import sjtu.sdic.mapreduce.common.Utils;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
+import java.nio.file.Paths;
+import java.util.*;
+
+import static sjtu.sdic.mapreduce.common.Utils.reduceName;
 
 /**
  * Created by Cachhe on 2019/4/19.
@@ -58,6 +58,69 @@ public class Reducer {
      * @param reduceF user-defined reduce function
      */
     public static void doReduce(String jobName, int reduceTask, String outFile, int nMap, ReduceFunc reduceF) {
-        
+        // read intermediate
+        List<KeyValue> arraylist = new ArrayList<>();
+
+        for (int i = 0; i < nMap; i++) {
+            String filename = reduceName(jobName, i, reduceTask);
+            String content = "";
+            try {
+                content = new String(Files.readAllBytes(Paths.get(filename)));
+//                System.out.print(content);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            List templist = JSONArray.parseArray(content, KeyValue.class);
+            arraylist.addAll(templist);
+        }
+
+        // sort them by key
+        Collections.sort(arraylist, new Comparator<KeyValue>() {
+            @Override
+            public int compare(KeyValue kv1, KeyValue kv2) {
+                return kv1.key.compareTo(kv2.key);
+            }
+        });
+
+        // call reduce functions
+        JSONObject jsonObject = new JSONObject();
+        List<String> sameValueList = new ArrayList<>();
+        if (arraylist.size() == 0) return;
+        sameValueList.add(arraylist.get(0).value);
+
+        for (int i = 1; i < arraylist.size(); i++) {
+            if (arraylist.get(i).key.equals(arraylist.get(i-1).key) == true) {
+                sameValueList.add(arraylist.get(i).value);
+
+                if (i == arraylist.size()-1) {
+                    String result = reduceF.reduce(arraylist.get(i).key, sameValueList.toArray(new String[sameValueList.size()]));
+                    jsonObject.put(arraylist.get(i).key, result);
+                    sameValueList.clear();
+                }
+            } else {
+                String result = reduceF.reduce(arraylist.get(i-1).key, sameValueList.toArray(new String[sameValueList.size()]));
+                jsonObject.put(arraylist.get(i-1).key, result);
+                sameValueList.clear();
+                sameValueList.add(arraylist.get(i).value);
+
+                if (i == arraylist.size()-1) {
+                    result = reduceF.reduce(arraylist.get(i).key, sameValueList.toArray(new String[sameValueList.size()]));
+                    jsonObject.put(arraylist.get(i).key, result);
+                    sameValueList.clear();
+                }
+            }
+        }
+
+        // write output files
+        FileOutputStream fileoutputstream = null;
+        File fileoutput = new File(outFile);
+        try {
+            fileoutputstream = new FileOutputStream(fileoutput);
+            String result = jsonObject.toJSONString();
+            fileoutputstream.write(result.getBytes());
+            fileoutputstream.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

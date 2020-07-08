@@ -17,12 +17,39 @@ public class InvertedIndex {
 
     public static List<KeyValue> mapFunc(String file, String value) {
         // Your code here (Part V)
-        return null;
+        Pattern pattern = Pattern.compile("[a-zA-Z0-9]+");
+        Matcher matcher = pattern.matcher(value);
+        List<KeyValue> arraylist = new ArrayList<>();
+
+        while (matcher.find()){
+            String word = matcher.group();
+            arraylist.add(new KeyValue(word, file));
+        }
+
+        return arraylist;
     }
 
     public static String reduceFunc(String key, String[] values) {
         //  Your code here (Part V)
-        return null;
+        String result = "";
+
+        // there are duplicate values. So we need to use set data structure
+        Set<String> hashset = new HashSet<String>();
+
+        for (String value : values) {
+            hashset.add(value);
+        }
+
+        result += Integer.toString(hashset.size()) + " ";
+
+        for (String value : hashset) {
+            result += value;
+            result += ",";
+        }
+
+        result = result.substring(0, result.length() - 1);
+
+        return result;
     }
 
     public static void main(String[] args) {

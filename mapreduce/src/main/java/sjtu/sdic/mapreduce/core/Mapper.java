@@ -5,11 +5,16 @@ import sjtu.sdic.mapreduce.common.KeyValue;
 import sjtu.sdic.mapreduce.common.Utils;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+
+import static sjtu.sdic.mapreduce.common.Utils.reduceName;
 
 /**
  * Created by Cachhe on 2019/4/19.
@@ -65,7 +70,44 @@ public class Mapper {
      * @param mapF the user-defined map function
      */
     public static void doMap(String jobName, int mapTask, String inFile, int nReduce, MapFunc mapF) {
-       
+        // first read file
+        String content = "";
+        try {
+            content = new String(Files.readAllBytes(Paths.get(inFile)));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        // map function
+        List<KeyValue> mapList = mapF.map(inFile, content);
+
+        // partition into different arraylist based on hashed key
+        List<KeyValue>[] arraylist = new List[nReduce];
+
+        for (int i = 0; i < nReduce; i++) {
+            arraylist[i] = new ArrayList<>();
+        }
+
+        for (int i = 0; i < mapList.size(); i++) {
+            int hash = hashCode(mapList.get(i).key) % nReduce;
+            arraylist[hash].add(mapList.get(i));
+        }
+
+        // write intermediate output files
+        FileOutputStream fileoutputstream = null;
+
+        for (int i = 0; i < nReduce; i++) {
+            String filename = reduceName(jobName, mapTask, i);
+            File fileoutput = new File(filename);
+            try {
+                fileoutputstream = new FileOutputStream(fileoutput);
+                String result = JSONArray.toJSONString(arraylist[i]);
+                fileoutputstream.write(result.getBytes());
+                fileoutputstream.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     /**
